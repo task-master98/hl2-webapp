@@ -2,6 +2,8 @@ import streamlit as st
 import asyncio
 import websockets
 
+FRAME_PATH = "frames/captured_frame.png"
+
 async def send_command(command):
     try:
         async with websockets.connect("wss://hololens-sense-9bd80b459134.herokuapp.com/") as websocket:
@@ -81,6 +83,20 @@ with st.container():
 
         if st.button("Top Right"):
             send_command_async("top_right")
+        
+        if st.button("Capture Frame"):
+
+            send_command_async("capture_frame")
+            st.success("Capture command sent")
+
+            time.sleep(3)
+
+            if os.path.exists(FRAME_PATH):
+                st.image(FRAME_PATH, caption="Captured Frame", use_column_width=True)
+                with open(FRAME_PATH, "rb") as file:
+                    st.download_button(label="Download captured frame", data=file, file_name="captured_frame.png")
+            else:
+                st.warning("Frame not yet available. Please try again")
 
 if st.session_state.get('previous_slider_value') != left_slider:
     st.session_state['previous_slider_value'] = left_slider
