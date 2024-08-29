@@ -3,14 +3,28 @@ import asyncio
 import websockets
 import time
 import os
+from PIL import Image
+import io
 
-FRAME_PATH = "frames/captured_frame.png"
+WEBSOCKET_URL = "wss://hololens-sense-9bd80b459134.herokuapp.com/"
+WEBSOCKET = None
+
+async def initialize_connection():
+    global WEBSOCKET
+    try:
+        WEBSOCKET = await websockets.connect(WEBSOCKET_URL)
+        await WEBSOCKET.send("device_name: web_app")
+        print("Web app identified as web_app")
+    except Exception as e:
+        print(f"Error initializing connection: {e}")
 
 async def send_command(command):
+    global WEBSOCKET
     try:
-        async with websockets.connect("wss://hololens-sense-9bd80b459134.herokuapp.com/") as websocket:
-            await websocket.send(command)
-            print(f"Sent command : {command}")
+        if WEBSOCKET is None:
+            await initialize_connection()
+        await WEBSOCKET.send(command)
+        print(f"Sent command: {command}")
     except Exception as e:
         print(f"Error sending command: {e}")
 
@@ -18,6 +32,24 @@ def send_command_async(command):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.run_until_complete(send_command(command))
+
+async def receive_frame():
+    global WEBSOCKET
+    try:
+        if WEBSOCKET is None:
+            await initialize_connection()
+        while True:
+            message = await WEBSOCKET.recv()
+            if isinstance(message, bytes):
+                return message  # Return the binary data (frame)
+    except Exception as e:
+        print(f"Error receiving frame: {e}")
+        return None
+
+def receive_frame_async():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    return loop.run_until_complete(receive_frame())
 
 st.title("Remote Control for HoloLens")
 
@@ -87,16 +119,26 @@ with st.container():
             send_command_async("top_right")
         
         if st.button("Capture Frame"):
-
             send_command_async("capture_frame")
-            st.success("Capture command sent")
+            st.success("Capture command sent! Waiting for the frame...")
 
-            time.sleep(3)
+            # Receive the frame from the WEBSOCKET server
+            frame_data = receive_frame_async()
 
-            if os.path.exists(FRAME_PATH):
-                st.image(FRAME_PATH, caption="Captured Frame", use_column_width=True)
-                with open(FRAME_PATH, "rb") as file:
-                    st.download_button(label="Download captured frame", data=file, file_name="captured_frame.png")
+            if frame_data:
+                # Convert the bytes data to an image using PIL
+                image = Image.open(io.BytesIO(frame_data))
+                
+                # Display the image in the Streamlit app
+                st.image(image, caption="Captured Frame", use_column_width=True)
+
+                # Provide a download button
+                st.download_button(
+                    label="Download Captured Frame",
+                    data=frame_data,
+                    file_name="captured_frame.png",
+                    mime="image/png"
+                )
             else:
                 st.warning("Frame not yet available. Please try again")
 
